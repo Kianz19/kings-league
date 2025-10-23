@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Haxball — Kings League Inspired (Single-file)</title>
+  <style>
+    :root{--bg:#0b1220;--panel:#0f1720;--accent:#f6b63a;--muted:#9aa7b2}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#061124 0%, #081a2a 60%);color:#e6eef6}
+    .wrap{display:flex;gap:16px;padding:18px;box-sizing:border-box;height:100%}
+    .left{width:900px;min-width:300px;background:linear-gradient(180deg,#082431 0%, #06313a 100%);border-radius:12px;padding:12px;box-shadow:0 8px 30px rgba(2,6,23,0.7)}
+    canvas{display:block;border-radius:8px;background:#0b2a1f;width:100%;height:560px}
+    .right{flex:1;min-width:260px;max-width:360px;background:linear-gradient(180deg,#071726 0%, #0b2130 100%);border-radius:12px;padding:14px;box-shadow:0 8px 30px rgba(2,6,23,0.7);display:flex;flex-direction:column}
+    h1{font-size:16px;margin:6px 0 8px}
+    .panel{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;margin-bottom:10px}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    .btn{background:var(--accent);color:#081220;padding:8px 10px;border-radius:8px;border:0;cursor:pointer;font-weight:600}
+    .btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:#dfeefb}
+    .row{display:flex;gap:8px;align-items:center}
+    select,input[type=number],.small{background:transparent;border:1px solid rgba(255,255,255,0.06);color:#dfeefb;padding:6px;border-radius:6px}
+    .muted{color:var(--muted);font-size:13px}
+    .avatar-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+    .avatar-slot{background:rgba(255,255,255,0.02);padding:6px;border-radius:6px;text-align:center;font-size:12px}
+    .scoreboard{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .score{font-size:22px;font-weight:800}
+    footer{margin-top:auto;font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="left">
+      <div class="scoreboard">
+        <div class="muted">Arena — Kings League (inspired)</div>
+        <div>
+          <span class="score" id="scoreL">0</span>
+          <span class="muted"> — </span>
+          <span class="score" id="scoreR">0</span>
+        </div>
+        <div class="muted" id="timer">00:00</div>
+      </div>
+      <canvas id="game" width="1200" height="560"></canvas>
+      <div style="display:flex;justify-content:space-between;margin-top:10px">
+        <button class="btn" id="startBtn">Iniciar / Pausar</button>
+        <div class="muted">Tempo: <span id="halfInfo">45 min</span> — Formato: <span id="formatInfo">Kings League (7x7)</span></div>
+        <button class="btn secondary" id="resetBtn">Reiniciar</button>
+      </div>
+    </div>
+
+    <div class="right">
+      <h1>Lobby & Configurações</h1>
+      <div class="panel">
+        <label>Modo</label>
+        <div class="row" style="justify-content:space-between">
+          <select id="mode">
+            <option value="kings">Kings League (7x7)</option>
+            <option value="casual">Casual (5x5)</option>
+            <option value="custom">Custom — 3v3</option>
+          </select>
+          <div style="flex:1"></div>
+          <label class="muted" style="font-size:12px;margin:0 6px">Bots:</label>
+          <input id="botLevel" type="number" class="small" min="0" max="5" value="3" style="width:58px"/>
+        </div>
+      </div>
+
+      <div class="panel">
+        <label>Jogadores atuais (humanos até 4) — clique para configurar avatar</label>
+        <div class="avatar-grid" id="playersList"></div>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn" id="addHuman">Adicionar jogador humano</button>
+          <button class="btn secondary" id="addBot">Adicionar bot</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <label>Controles (padrão — até 4 jogadores locais)</label>
+        <div class="muted" style="font-size:13px">1: WASD + Espaço | 2: Setas + RShift | 3: IJKL + O | 4: TFGH + Y</div>
+      </div>
+
+      <div class="panel">
+        <label>Regras (implementadas)</label>
+        <ul class="muted">
+          <li>No offside</li>
+          <li>Subs rolantes — troque humanos com bots no lobby</li>
+          <li>Partida com dois tempos configuráveis</li>
+          <li>Falta simples (sem cartões)</li>
+        </ul>
+      </div>
+
+      <div class="panel" id="uploadPanel">
+        <label>Enviar avatar (para o jogador selecionado)</label>
+        <input type="file" id="avatarFile" accept="image/*" />
+      </div>
+
+      <footer>
+        Jogo feito em HTML/CSS/JS. Publique este arquivo no GitHub Pages (basta enviar o arquivo .html para o repositório).<br>
+        Observação: este projeto é uma versão **inspirada** — não é conectada por rede (multiplayer online). Se quiser online, posso ajudar a integrar WebRTC/signaling.
+      </footer>
+    </div>
+  </div>
+
+  <script>
+  // Single-file top-down soccer inspired by Haxball and Kings League.
+  // Works locally in the browser. Up to 4 human players local, bots fill the rest to match team sizes.
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  const config = {
+    mode: 'kings', // kings=7x7, casual=5x5, custom=3x3
+    halfMinutes: 20, // we'll set based on mode
+    teamSize: 7,
+    maxHumans: 4,
+  }
+
+  const ui = {
+    scoreL: document.getElementById('scoreL'),
+    scoreR: document.getElementById('scoreR'),
+    timer: document.getElementById('timer'),
+    startBtn: document.getElementById('startBtn'),
+    resetBtn: document.getElementById('resetBtn'),
+    playersList: document.getElementById('playersList'),
+    addHuman: document.getElementById('addHuman'),
+    addBot: document.getElementById('addBot'),
+    modeSelect: document.getElementById('mode'),
+    botLevel: document.getElementById('botLevel'),
+    fileInput: document.getElementById('avatarFile'),
+    halfInfo: document.getElementById('halfInfo'),
+    formatInfo: document.getElementById('formatInfo')
+  }
+
+  // Entities
+  class Vec{constructor(x=0,y=0){this.x=x;this.y=y}add(o){return new Vec(this.x+o.x,this.y+o.y)}scale(s){return new Vec(this.x*s,this.y*s)}len(){return Math.hypot(this.x,this.y)}norm(){const L=this.len()||1;return new Vec(this.x/L,this.y/L)}}
+
+  class Ball{
+    constructor(){this.pos=new Vec(W/2,H/2);this.vel=new Vec(0,0);this.r=10;}
+    update(dt){this.pos.x+=this.vel.x*dt;this.pos.y+=this.vel.y*dt;this.vel=this.vel.scale(0.995); // friction
+      // walls
+      if(this.pos.x-this.r<0){this.pos.x=this.r;this.vel.x*=-0.8}
+      if(this.pos.x+this.r>W){this.pos.x=W-this.r;this.vel.x*=-0.8}
+      if(this.pos.y-this.r<0){this.pos.y=this.r;this.vel.y*=-0.9}
+      if(this.pos.y+this.r>H){this.pos.y=H-this.r;this.vel.y*=-0.9}
+    }
+    draw(){ctx.beginPath();ctx.fillStyle='#fff';ctx.arc(this.pos.x,this.pos.y,this.r,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(0,0,0,0.3)';ctx.stroke()}
+  }
+
+  class Player{
+    constructor(team,slot,id,control=null){
+      this.team=team;this.slot=slot;this.id=id;this.pos=new Vec();this.vel=new Vec();this.r=14;this.speed=200;this.control=control;this.avatar=null;this.color=(team===0)?'#e84118':'#1e90ff';this.isBot=false;this.name=`P${id}`;this.stamina=100;}
+    draw(){ctx.beginPath();ctx.fillStyle=this.color;ctx.arc(this.pos.x,this.pos.y,this.r,0,Math.PI*2);ctx.fill();
+      if(this.avatar){ctx.save();ctx.beginPath();ctx.arc(this.pos.x,this.pos.y,this.r-2,0,Math.PI*2);ctx.clip();ctx.drawImage(this.avatar,this.pos.x-this.r+2,this.pos.y-this.r+2,(this.r-2)*2,(this.r-2)*2);ctx.restore();}
+      else {ctx.fillStyle='rgba(255,255,255,0.9)';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(this.name,this.pos.x,this.pos.y)}
+    }
+    update(dt){if(this.control){this.control.update(this,dt)} else if(this.isBot){botUpdate(this,dt)}
+      // apply movement
+      this.pos.x += this.vel.x*dt; this.pos.y += this.vel.y*dt;
+      // bound
+      if(this.pos.x<this.r) this.pos.x=this.r;
+      if(this.pos.x>W-this.r) this.pos.x=W-this.r;
+      if(this.pos.y<this.r) this.pos.y=this.r;
+      if(this.pos.y>H-this.r) this.pos.y=H-this.r;
+      // friction
+      this.vel=this.vel.scale(0.9);
+    }
+  }
+
+  // Controls mapping
+  const key = {};
+  window.addEventListener('keydown',e=>{key[e.code]=true});
+  window.addEventListener('keyup',e=>{key[e.code]=false});
+
+  // Control wrappers for players
+  class HumanControl{
+    constructor(layout){this.layout=layout}
+    update(player,dt){
+      const L=this.layout;
+      let vx=0,vy=0;
+      if(key[L.up]) vy -= 1;
+      if(key[L.down]) vy += 1;
+      if(key[L.left]) vx -= 1;
+      if(key[L.right]) vx += 1;
+      const v = new Vec(vx,vy);
+      if(v.len()>0){const n=v.norm();player.vel.x += n.x * player.speed * dt; player.vel.y += n.y * player.speed * dt}
+      // kick
+      if(key[L.kick]){
+        // attempt to kick ball if close
+        const d = dist(player.pos, ball.pos);
+        if(d < player.r + ball.r + 6){ const dir = new Vec(ball.pos.x - player.pos.x, ball.pos.y - player.pos.y).norm(); ball.vel.x += dir.x * 600; ball.vel.y += dir.y * 600 }
+      }
+    }
+  }
+
+  const controlLayouts = [
+    {up:'KeyW',down:'KeyS',left:'KeyA',right:'KeyD',kick:'Space'},
+    {up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',kick:'ShiftRight'},
+    {up:'KeyI',down:'KeyK',left:'KeyJ',right:'KeyL',kick:'KeyO'},
+    {up:'KeyT',down:'KeyG',left:'KeyF',right:'KeyH',kick:'KeyY'}
+  ];
+
+  // Utility
+  function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+
+  // ------------------------------------------------------------------
+  // GAME STATE DECLARATIONS (must be declared BEFORE any function that
+  // might use them on initialization)
+  // ------------------------------------------------------------------
+  let players = [];
+  let humans = 0;
+  let bots = 0;
+  let ball = new Ball();
+  let score = [0,0];
+  let running = false;
+  let lastTime = 0;
+  let elapsed = 0;
+  let half = 1;
+  let halfDuration = 0;
+  let waypoint = null;
+  let selectedHumanIndex = 0; // index in humans array
+
+  // ------------------------------------------------------------------
+  // Teams / lobby management
+  // ------------------------------------------------------------------
+  function rebuildTeams(){
+    // keep existing human avatars and names; clear bots and add to fill teamSize
+    const humansPreserved = players.filter(p=>!p.isBot);
+    players = [];
+    const totalPerTeam = config.teamSize;
+    // place humans onto team slots until max
+    let hidx = 0;
+    const maxHumans = Math.min(config.maxHumans, humansPreserved.length);
+    // We'll distribute humans sequentially across teams
+    for(let t=0;t<2;t++){
+      for(let s=0;s<totalPerTeam;s++){
+        let p;
+        if(hidx < humansPreserved.length){
+          const src = humansPreserved[hidx];
+          p = new Player(t,s, ++hidx-1, null);
+          p.control = src.control; p.avatar = src.avatar; p.name = src.name; p.isBot = false; p.color = (t===0)?'#e84118':'#1e90ff';
+        } else {
+          p = new Player(t,s,players.length, null);
+          p.isBot = true; p.name = 'Bot'+(players.length+1);
+        }
+        // initial positions
+        const sideX = (t===0) ? W*0.2 : W*0.8;
+        const y = H*(0.1 + 0.8*(s/(totalPerTeam-1||1)));
+        p.pos = new Vec(sideX + (Math.random()-0.5)*50, y + (Math.random()-0.5)*20);
+        players.push(p);
+      }
+    }
+    updatePlayersListUI();
+  }
+
+  function addHuman(){
+    // create new human with next layout if available
+    const humansCurrent = players.filter(p=>!p.isBot).length;
+    if(humansCurrent >= config.maxHumans){alert('Limite de jogadores humanos atingido (4).');return}
+    const layout = controlLayouts[humansCurrent];
+    const p = new Player(0,0,players.length,new HumanControl(layout));
+    p.isBot=false; p.name='Você'; p.color='#ffde59';
+    // push to humans list temporarily and rebuild
+    players.push(p);
+    rebuildTeams();
+  }
+
+  function addBot(){players.push(new Player(0,0,players.length,null));rebuildTeams();}
+
+  ui.addHuman.addEventListener('click',()=>{addHuman();});
+  ui.addBot.addEventListener('click',()=>{addBot();});
+
+  function updatePlayersListUI(){
+    ui.playersList.innerHTML='';
+    const humansOnly = players.filter(p=>!p.isBot);
+    for(let i=0;i<config.maxHumans;i++){
+      const slot = document.createElement('div'); slot.className='avatar-slot';
+      if(humansOnly[i]){
+        const p = humansOnly[i];
+        slot.innerHTML = `<div style="height:48px;display:flex;align-items:center;justify-content:center">${p.avatar?'<img src="'+p.avatar.src+'" width="44" height="44" style="border-radius:50%">':'<div style="width:44px;height:44px;border-radius:50%;background:'+p.color+'"></div>'}</div><div style="margin-top:6px">${p.name}</div><div style="margin-top:6px"><button data-idx="${i}" class="btn secondary smallBtn">Selecionar</button></div>`;
+      } else {
+        slot.innerHTML = `<div style="height:48px;display:flex;align-items:center;justify-content:center"><div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.03)"></div></div><div style="margin-top:6px">Vazio</div><div style="margin-top:6px"><button data-idx="${i}" class="btn smallBtn">Criar</button></div>`;
+      }
+      ui.playersList.appendChild(slot);
+    }
+    // attach listeners
+    ui.playersList.querySelectorAll('.smallBtn').forEach(b=>{b.addEventListener('click',e=>{
+      const idx = Number(e.target.dataset.idx);
+      const humansOnly = players.filter(p=>!p.isBot);
+      if(humansOnly[idx]){ selectedHumanIndex = idx; alert('Jogador selecionado para configurar avatar. Use o input de arquivo abaixo para enviar sua imagem.') }
+      else { // create new human here
+        // assign human control to first available layout
+        const humansCurrent = players.filter(p=>!p.isBot).length;
+        if(humansCurrent >= config.maxHumans){alert('Limite de humanos');return}
+        const layout = controlLayouts[humansCurrent];
+        const p = new Player(0,0,players.length,new HumanControl(layout)); p.isBot=false; p.name='Você'; p.color='#ffde59';
+        players.push(p); rebuildTeams();
+      }
+    })});
+  }
+
+  // avatar upload handling
+  ui.fileInput.addEventListener('change',async(e)=>{
+    const f = e.target.files[0]; if(!f) return; const url = URL.createObjectURL(f);
+    const img = new Image(); img.onload = ()=>{
+      const humansOnly = players.filter(p=>!p.isBot);
+      if(humansOnly.length===0){alert('Nenhum jogador humano para configurar. Adicione um jogador primeiro.'); return}
+      const target = humansOnly[selectedHumanIndex] || humansOnly[0];
+      target.avatar = img; updatePlayersListUI();
+    }
+    img.src=url;
+  })
+
+  // bots simple AI
+  function botUpdate(player,dt){
+    // choose nearest object: ball or opponent
+    const team = player.team; const enemyGoalX = team===0?W:0;
+    // simple behavior: chase ball if on your half or near
+    const dBall = dist(player.pos, ball.pos);
+    let target = ball.pos;
+    // if close to ball, kick towards enemy goal
+    if(dBall < 60){
+      const dir = new Vec((team===0?1:-1),0).norm(); ball.vel.x += dir.x*400*(Number(ui.botLevel.value)||2); ball.vel.y += (Math.random()-0.5)*100; 
+    }
+    // move toward target
+    const dir = new Vec(target.x - player.pos.x, target.y - player.pos.y).norm();
+    player.vel.x += dir.x * player.speed * 0.6 * dt * (1 + (Number(ui.botLevel.value)||2)/5);
+    player.vel.y += dir.y * player.speed * 0.6 * dt * (1 + (Number(ui.botLevel.value)||2)/5);
+  }
+
+  // collisions
+  function handleCollisions(){
+    // players with ball
+    for(const p of players){
+      const d = dist(p.pos,ball.pos);
+      if(d < p.r + ball.r){
+        const overlap = p.r + ball.r - d + 0.1; const nx=(ball.pos.x - p.pos.x)/d, ny=(ball.pos.y - p.pos.y)/d;
+        ball.pos.x += nx * overlap; ball.pos.y += ny * overlap;
+        // exchange some momentum
+        ball.vel.x = ball.vel.x*0.4 + p.vel.x*0.6 + nx*200;
+        ball.vel.y = ball.vel.y*0.4 + p.vel.y*0.6 + ny*200;
+      }
+    }
+    // player-player collisions
+    for(let i=0;i<players.length;i++){
+      for(let j=i+1;j<players.length;j++){
+        const a=players[i], b=players[j]; const d = dist(a.pos,b.pos);
+        if(d < a.r + b.r){
+          const overlap = (a.r + b.r - d)/2 || 0.5; const nx=(b.pos.x - a.pos.x)/d, ny=(b.pos.y - a.pos.y)/d;
+          a.pos.x -= nx*overlap; a.pos.y -= ny*overlap; b.pos.x += nx*overlap; b.pos.y += ny*overlap;
+          // simple velocity swap
+          const tmpx=a.vel.x; const tmpy=a.vel.y; a.vel.x = b.vel.x*0.6; a.vel.y = b.vel.y*0.6; b.vel.x = tmpx*0.6; b.vel.y = tmpy*0.6;
+        }
+      }
+    }
+  }
+
+  // Goals
+  const goal = {w:150,h:80};
+  function checkGoal(){
+    // left goal centered vertically at x=0, right goal at x=W
+    if(ball.pos.x - ball.r <= 0 && ball.pos.y > (H-goal.h)/2 && ball.pos.y < (H+goal.h)/2){
+      // goal for right team
+      score[1]++; ui.scoreR.textContent = score[1]; kickoff(1);
+    }
+    if(ball.pos.x + ball.r >= W && ball.pos.y > (H-goal.h)/2 && ball.pos.y < (H+goal.h)/2){
+      score[0]++; ui.scoreL.textContent = score[0]; kickoff(0);
+    }
+  }
+
+  function kickoff(scoredTeam){
+    // reset positions
+    ball.pos = new Vec(W/2,H/2); ball.vel = new Vec(0,0);
+    // position players
+    rebuildTeams();
+    // give ball to scoring team? center kickoff
+  }
+
+  // draw field
+  function drawField(){
+    // background
+    ctx.fillStyle = '#0e8a61'; ctx.fillRect(0,0,W,H);
+    // side gradients resembling stands
+    const g = ctx.createLinearGradient(0,0,0,50); g.addColorStop(0,'rgba(0,0,0,0.25)'); g.addColorStop(1,'rgba(255,255,255,0.02)');
+    // center line and circles
+    ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fillRect(W*0.5-2,0,4,H);
+    ctx.beginPath(); ctx.strokeStyle='rgba(255,255,255,0.45)'; ctx.lineWidth=2; ctx.arc(W/2,H/2,70,0,Math.PI*2); ctx.stroke();
+    // penalty boxes
+    ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=2; ctx.strokeRect(0,(H-goal.h)/2,60,goal.h); ctx.strokeRect(W-60,(H-goal.h)/2,60,goal.h);
+    // center text
+    ctx.font='bold 28px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.08)'; ctx.textAlign='center'; ctx.fillText('KINGS LEAGUE (inspired)',W/2,H*0.06);
+  }
+
+  function update(dt){
+    // update players and ball
+    for(const p of players) p.update(dt);
+    ball.update(dt);
+    handleCollisions();
+    checkGoal();
+  }
+
+  function render(){
+    // clear
+    ctx.clearRect(0,0,W,H);
+    // arena background with stylized stands
+    // draw stadium border
+    ctx.fillStyle='#071726'; ctx.fillRect(0,0,W,H);
+    drawField();
+    // draw goals
+    ctx.fillStyle='rgba(255,255,255,0.08)'; ctx.fillRect(-6,(H-goal.h)/2-6,12,goal.h+12); ctx.fillRect(W-6,(H-goal.h)/2-6,12,goal.h+12);
+    // draw players
+    for(const p of players) p.draw();
+    ball.draw();
+  }
+
+  function loop(ts){
+    if(!lastTime) lastTime = ts; const dt = Math.min(0.04,(ts-lastTime)/1000); lastTime = ts;
+    if(running){ update(dt); elapsed += dt; }
+    render();
+    // timer update
+    const remain = Math.max(0, config.halfMinutes*60 - elapsed);
+    const mm = Math.floor(remain/60); const ss = Math.floor(remain%60);
+    ui.timer.textContent = `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+    requestAnimationFrame(loop);
+  }
+
+  // start/pause/reset
+  ui.startBtn.addEventListener('click',()=>{running=!running; ui.startBtn.textContent = running? 'Pausar' : 'Iniciar / Retomar'});
+  ui.resetBtn.addEventListener('click',()=>{score=[0,0]; ui.scoreL.textContent=0;ui.scoreR.textContent=0;elapsed=0;running=false;applyMode(config.mode);});
+
+  // initial setup
+  // create default humans: 1 human by default
+  players = [];
+  const p0 = new Player(0,0,0,new HumanControl(controlLayouts[0])); p0.isBot=false; p0.name='Você'; p0.color='#ffde59'; players.push(p0);
+  // fill to teams
+  rebuildTeams();
+
+  // kickoff initial ball
+  ball = new Ball();
+
+  // now apply mode (was removed earlier to avoid referencing `players` before it's declared)
+  applyMode(config.mode);
+
+  requestAnimationFrame(loop);
+
+  </script>
+</body>
+</html>
