@@ -201,13 +201,12 @@
   function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 
   // ------------------------------------------------------------------
-  // GAME STATE DECLARATIONS (must be declared BEFORE any function that
-  // might use them on initialization)
+  // GAME STATE DECLARATIONS
   // ------------------------------------------------------------------
   let players = [];
   let humans = 0;
   let bots = 0;
-  let ball = new Ball();
+  let ball = null;
   let score = [0,0];
   let running = false;
   let lastTime = 0;
@@ -367,6 +366,7 @@
 
   function kickoff(scoredTeam){
     // reset positions
+    if(!ball) ball = new Ball();
     ball.pos = new Vec(W/2,H/2); ball.vel = new Vec(0,0);
     // position players
     rebuildTeams();
@@ -391,7 +391,7 @@
   function update(dt){
     // update players and ball
     for(const p of players) p.update(dt);
-    ball.update(dt);
+    if(ball) ball.update(dt);
     handleCollisions();
     checkGoal();
   }
@@ -407,7 +407,7 @@
     ctx.fillStyle='rgba(255,255,255,0.08)'; ctx.fillRect(-6,(H-goal.h)/2-6,12,goal.h+12); ctx.fillRect(W-6,(H-goal.h)/2-6,12,goal.h+12);
     // draw players
     for(const p of players) p.draw();
-    ball.draw();
+    if(ball) ball.draw();
   }
 
   function loop(ts){
@@ -425,17 +425,26 @@
   ui.startBtn.addEventListener('click',()=>{running=!running; ui.startBtn.textContent = running? 'Pausar' : 'Iniciar / Retomar'});
   ui.resetBtn.addEventListener('click',()=>{score=[0,0]; ui.scoreL.textContent=0;ui.scoreR.textContent=0;elapsed=0;running=false;applyMode(config.mode);});
 
+  // applyMode now defined before usage
+  function applyMode(mode){
+    config.mode = mode;
+    if(mode==='kings'){config.teamSize=7;config.halfMinutes=20;ui.halfInfo.textContent = '20 min';ui.formatInfo.textContent='Kings League (7x7)'}
+    else if(mode==='casual'){config.teamSize=5;config.halfMinutes=10;ui.halfInfo.textContent = '10 min';ui.formatInfo.textContent='Casual (5x5)'}
+    else {config.teamSize=3;config.halfMinutes=8;ui.halfInfo.textContent='8 min';ui.formatInfo.textContent='Custom (3x3)'}
+    // rebuild teams only if players is initialized
+    if(typeof players !== 'undefined') rebuildTeams();
+  }
+
+  ui.modeSelect.addEventListener('change',e=>applyMode(e.target.value));
+
   // initial setup
   // create default humans: 1 human by default
   players = [];
   const p0 = new Player(0,0,0,new HumanControl(controlLayouts[0])); p0.isBot=false; p0.name='Você'; p0.color='#ffde59'; players.push(p0);
-  // fill to teams
-  rebuildTeams();
-
-  // kickoff initial ball
+  // create ball now that Vec and Ball are defined
   ball = new Ball();
 
-  // now apply mode (was removed earlier to avoid referencing `players` before it's declared)
+  // set teams according to mode
   applyMode(config.mode);
 
   requestAnimationFrame(loop);
